@@ -1,0 +1,6 @@
+/* Disable unwanted Octopress styles */
+h1, h2, h3, h4, h5, h6 { font-family: "Lucida Grande", "Lucida Sans Unicode", "Lucida Sans", Verdana, Arial, sans-serif; }
+
+html {background: none;}
+body > div {background: none; border: none;}
+body > div > div {background: none; border-right: none;}
