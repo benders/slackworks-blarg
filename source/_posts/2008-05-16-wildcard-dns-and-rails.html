@@ -1,0 +1,31 @@
+---
+layout: post
+title: "Wildcard DNS and Rails"
+permalink: /posts/wildcard-dns-and-rails
+date: 2008-05-16
+author: "Nic Benders"
+comments: false
+external-url:
+categories:
+---
+  <div class="summary">
+	  <p>The most common Rails config wants a separate hostname for each application.  If you tend to create new ones frequently, this can mean a lot of running back and forth to your <span class="caps">DNS</span> config.  At best this means waiting for the changes to propagate, at worst it could mean waiting for corporate IT to get around to it.</p>
+
+
+	<p>Luckily, in addition to normal names, <span class="caps">DNS</span> allows you to create &#8220;wildcard&#8221; records that match any name not otherwise defined.</p>
+  </div>
+  <!-- more -->
+  <div class="body">
+    <p>We setup each hostname with their own wildcard by default, so that <code>foo.hostname</code> is always an alias (<code>CNAME</code>) for <code>hostname</code>.</p>
+
+
+An example from our bind zone file:
+<pre>
+sprocket                    IN      A               69.27.234.180
+*.sprocket                  IN      CNAME           sprocket
+</pre>
+	<p>This means that if I want to deploy my new app, The Awesomator, I can use the hostname &#8216;<code>awesomator.sprocket.slackworks.com</code>&#8217; without having to change anything in <span class="caps">DNS</span>.</p>
+
+
+	<p>Then I drop my virtual host config <a href="/web/20090101234156/http://xac.slackworks.com/awesomator.conf"><code>awesomator.conf</code></a> file, largely stolen from <a href="/web/20090101234156/http://blog.codahale.com/2006/06/19/time-for-a-grown-up-server-rails-mongrel-apache-capistrano-and-you/">Coda Hale&#8217;s config</a> , into Apache&#8217;s config directory (<code>/etc/apache2/sites-available/</code> on Debian, <code>/etc/httpd/conf.d/</code> on Red Hat).  An Apache reload and a few mongrels later and I&#8217;m up and running on my new hostname.</p>
+  </div>

@@ -1,0 +1,31 @@
+---
+layout: post
+title: "Restore Finder magic to a sparsebundle directory"
+permalink: /posts/bundle-magic
+date: 2008-01-03
+author: "Nic Benders"
+comments: false
+external-url:
+categories:
+---
+  <div class="summary">
+	  <p>This is a quick fix to restore t
+he special behavior of a .sparsebundle directory in Finder.</p>
+  </div>
+  <!-- more -->
+  <div class="body">
+    <p>While experimenting with TimeMachine&#8217;s unsupported network backup capabilities I rsync&#8217;d my <code>host_blah.sparsebundle</code> from one drive to another (without using <code>-E</code>, more on that later).  The result was that my <code>.sparsebundle</code> now appeared in the Finder just as a normal folder, instead of with a disk image icon.  This also meant that I couldn&#8217;t open the image in DiskUtility any more.</p>
+
+
+	<p>The fix is to use <a href="http://developer.apple.com/documentation/Darwin/Reference/ManPages/man1/SetFile.1.html">SetFile</a> to restore the &#8220;Bundle&#8221; attribute.</p>
+
+
+<code>$ /Developer/Tools/SetFile -a B host_blah.sparsebundle</code>
+	<p>The first time I mounted it afterwards I had to wait for fsck_hfs to complete, since the &#8220;com.apple.diskimages.fsck&#8221; attribute had been cleared, but otherwise it&#8217;s back to it&#8217;s old self.</p>
+
+
+	<p>I also learned that in order to avoid this (and many other much nastier problems) you should use the <code>-E</code> flag for rsync under Mac OS.  This correctly copies over the resource forks, extended attributes and meta-data also.</p>
+
+
+	<p>(This item is probably old-hat to many Mac users, since Bundles have been in the Finder since <span class="caps">OS 9</span>.  But it took me a couple of days of searching and experimentation, so I figure it could use some better visibility.)</p>
+  </div>

@@ -1,0 +1,99 @@
+---
+layout: post
+title: "Bj Makes attachment_fu Happy"
+permalink: /posts/bj-makes-attachment_fu-happy
+date: 2008-01-12
+author: "Jon Guymon"
+comments: false
+external-url:
+categories:
+---
+  <div class="summary">
+	  <p>The <a href="http://svn.techno-weenie.net/projects/plugins/attachment_fu/README">attachment_fu</a> plugin for Rails is great, and it&#8217;s support for S3 as a backend sounds really handy.  Sadly tho
+ugh, it isn&#8217;t practical for anything other a demo or a proof-of-concept.  Luckily its limitations can be worked around with the cunning use of <a href="http://codeforpeople.rubyforge.org/svn/bj/trunk/README">Bj</a> .</p>
+  </div>
+  <!-- more -->
+  <div class="body">
+    <p>When you upload a file to a Rails app, your browser waits while Mongrel buffers the file, then your browser waits some more while Rails processes the fully uploaded file.  Normally this &#8220;processing&#8221; is simply copying the file from where Mongrel put it to where Rails wants it, no big whup.  The problem arises when this &#8220;processing&#8221; is substantially more time consuming, like, say transmitting the file to S3.  There&#8217;s no guarantee that this will take place in a reasonable amount of time and meanwhile, not only is the user&#8217;s browser getting nearer to timing out, but that whole Rails instance is going to block and no one else can use it either.  Rails is single threaded, remember?</p>
+
+
+	<p>The solution is to write the file to disk like normal, then spawn a process in the background to take care of uploading it to S3.  This is where Bj comes in.  Install thusly:</p>
+
+
+<pre>
+./script/plugin install http://codeforpeople.rubyforge.org/svn/rails/plugins/bj
+
+./script/bj setup
+
+rake db:migrate
+</pre>
+	<p>Bj is a light weight work queue that uses your app&#8217;s database as a store.  Requests are put into the <code>bj_job</code> table and run one at a time outside of the <code>mongrel_rails</code> process.  Say we have a model <code>UploadFile</code> that uses attachment_fu:</p>
+
+
+<pre class="sh_ruby">
+class UploadFile &lt; ActiveRecord::Base
+  has_attachment :storage =&gt; :file_system
+  after_create :upload_to_s3
+
+  BUCKET = 'your bucket'
+
+  def s3_url(thumbnail = nil, use_https = false)
+    if self.uploaded?
+      "http#{'s' if use_https}://s3.amazonaws.com/#{BUCKET}/#{self.id}/#{self.filename}" 
+    else
+      self.public_filename
+    end
+  end
+
+protected
+
+  def upload_to_s3
+    Bj.submit("./script/runner ./jobs/s3_uploader.rb #{self.id}")
+  end
+
+end
+</pre>
+	<p><strong>Note</strong>: for this to work your <code>upload_files</code> table will need a boolean column called <code>uploaded</code> with default <code>false</code>, along with the standard attachment_fu columns.</p>
+
+
+	<p>Whenever a new <code>UploadFile</code> is created, a job is queued to send it off to S3.  Meanwhile, we can still read the file off the local filesystem before its upload is complete.</p>
+
+
+	<p>To define the actual job we create a <code>RAILS_ROOT/jobs</code> directory and put this file in as <code>s3_uploader.rb</code>:</p>
+
+
+<pre class="sh_ruby">
+# ./script/runner ./jobs/s3_uploader.rb &lt;id&gt;
+
+require 'upload_file'
+require 'aws/s3'
+include AWS::S3
+
+ACCESS_KEY = 'your access key'
+SECRET_KEY = 'your secret key'
+BUCKET     = 'your bucket'
+FILE_ID    = ARGV[0]
+
+file = UploadFile.find(FILE_ID)
+
+Base.establish_connection!(:access_key_id     =&gt; ACCESS_KEY,
+                           :secret_access_key =&gt; SECRET_KEY)
+
+S3Object.store("/#{file.id}/#{file.filename}", 
+               open(file.full_filename), 
+               BUCKET,
+               :access =&gt; :public_read)
+
+file.update_attributes(:uploaded =&gt; true)
+</pre>
+	<p>This will be run by Bj as its own process, leaving Rails to get on with life while the potentially slow upload to S3 drags on.</p>
+
+
+	<p>Couple exercises for the reader: clean up the files on the local filesystem after they&#8217;ve been successfully uploaded to S3, save memory by ditching <code>./script/runner</code> and accessing MySQL directly without ActiveRecord, support for thumbnails&#8230;.  A really slick one would be to retry the S3 upload by putting the job back in the queue if it fails.</p>
+
+
+	<p>In the past we solved this problem with <a href="http://code.google.com/p/activemessaging/wiki/ActiveMessaging">ActiveMessaging</a> but it&#8217;s fidgety to get that working right, it&#8217;s a memory hog, and deployment is a pain (the pollers don&#8217;t clean up well &#8211; we crashed a server once with 30 zombie pollers).  There are still cases where you might want to use ActiveMessaging &#8211; one obvious one is if you need to talk to Java via ActiveMQ &#8211; but Bj wins for simplicity and ease of deployment.</p>
+
+
+	<p>Many <span class="caps">MANY</span> thanks to <a href="http://codeforpeople.com/">Ara Howard</a> who wrote Bj and personally helped me get everything working properly.</p>
+  </div>

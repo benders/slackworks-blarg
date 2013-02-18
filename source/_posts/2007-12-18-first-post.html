@@ -1,0 +1,69 @@
+---
+layout: post
+title: "First Post"
+permalink: /posts/first-post
+date: 2007-12-18
+author: "Jon Guymon"
+comments: false
+external-url:
+categories:
+---
+  <div class="summary">
+	  <p>What do we have here?</p>
+
+
+	<p>It would seem to be yet another blog, and it is.  This one, however, is built with <a href="http://merbivore.com/">merb</a> and <a href="http://couchdb.org/">CouchDB</a> so building it gave me a chance to experiment with some interesting projects that I don&#8217;t get to use in my daily life as a professional web developer.</p>
+  </div>
+  <!-- more -->
+  <div class="body">
+    <p>The code for this site is available to the many-eyes beasts of the Interwebs here:</p>
+
+
+<code>git://sprocket.slackworks.com/srv/git/blarg.git</code>
+	<p>It requires merb and friends, as well as an instance of CouchDB to be running somewhere.  There are a few reasons I chose merb over Rails (which is what I generally use professionally) to do this:</p>
+
+
+<ul>
+	<li>It comes with no pre-packaged <span class="caps">ORM</span>.  I wanted to use CouchDB, so none of the existing ORMs would really work for me.  My previous experiences of trying to rip ActiveRecord out of Rails have been frustrating.</li>
+	<li>It has more flexible routing than Rails.  I realize there are ways to accomplish the things I&#8217;m doing here in Rails, but the merb routes seem clearer to me, less hand-wavy.  And perhaps most importantly:</li>
+	<li>It&#8217;s not Rails.  I use Rails all day long, and I wanted to see what else is out there.</li>
+</ul>
+
+	<p>Moving along.  I&#8217;m using <a href="http://couchobject.rubyforge.org/">CouchObject</a> to communicate between Ruby and CouchDB, but I found CouchObject&#8217;s Persistable <span class="caps">API</span> a little unsatisfying, so I wrapped in a class I&#8217;m calling CouchBase.  Classes that extend CouchBase can define <code>couch_accessor</code>s that are populated from, and saved to, CouchDB.</p>
+
+
+<pre class="sh_ruby">
+class Post &lt; CouchBase 
+  couch_accessor :title, :summary, :body, :author, :tags, :created_at
+  ...
+end
+</pre>
+<code>couch_accessor</code> is defined in <code>CouchObject</code> as such:
+<pre class="sh_ruby">
+def self.couch_accessor(*fields)
+  meta_def(:couchables) { fields }
+end
+</pre>
+	<p>This just takes note of which attributes should be saved in CouchDB because this can&#8217;t be inspected from a schema like with ActiveRecord. The method <code>meta_def</code> is part of  <a href="http://whytheluckystiff.net/articles/seeingMetaclassesClearly.html">metaid</a>.  When any of these attributes is read from or written to, it&#8217;s actually the class&#8217;s <code>@document</code> that is accessed.</p>
+
+
+<pre class="sh_ruby">
+def method_missing(meth, *attrs)
+  field = meth.to_s.gsub('=', '')
+  proxied_methods = self.class.couchables + [ :id, :new? ]
+  if proxied_methods.include?(field.to_sym)
+    @document.send(meth, *attrs) rescue nil
+  else
+    super
+  end
+end
+</pre>
+	<p>Then, if the object is <code>save</code>-ed that <code>@document</code> is written to CouchDB.  Objects pulled from the DB via <code>CouchObject#find_by_id</code> have their <code>@document</code> populated from the CouchDB record.</p>
+
+
+	<p>One caveat I noticed using CouchObject: CouchDB expects temp view POSTs to have the mime-type &#8220;text/javascript&#8221; but CouchObject sends them as &#8220;application/json&#8221; so you have to add <code>application/json=/usr/local/bin/couchjs -f /usr/local/share/couchdb/server/main.
+js</code> to the end of your <code>/usr/local/etc/couchdb/couch.ini</code>.</p>
+
+
+	<p>I&#8217;ll try to get comments working soon so people who want to blab may do so.  In the mean time you can write to me at gnarg (at) slackworks.com and don&#8217;t forget to check out the code.</p>
+  </div>

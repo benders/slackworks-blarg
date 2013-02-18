@@ -1,0 +1,160 @@
+---
+layout: post
+title: "JRuby Service in Rails"
+permalink: /posts/jruby-service-in-rails
+date: 2008-07-06
+author: "Michael Guymon"
+comments: false
+external-url:
+categories:
+---
+  <div class="summary">
+	  <p>I have two worlds that need to collide. Rails solves the decade long problem of abusive Java web stacks and Java provides mature codebase to the Rails paradigm. JRuby has brought me the spark, now if I can only get the fire burning.</p>
+
+
+	<p><b>The problem</b>: I need a Spring context to startup with Rails and use the config/database.yml.</p>
+
+
+	<p><b>The solution</b>: A JRuby Service.</p>
+  </div>
+  <!-- more -->
+  <div class="body">
+    <p>I want to expose tons of existing Java code and libs into Rails, but do not want to deal with a segmented world. Everything should be configured and started from one place, this is were a JRuby Service helps. The JRuby runtime will automatically load a class implementing a JRuby service interface (such as <code>org.jruby.runtime.load.BasicLibraryService</code>) when it is packaged in a specifically named jar at a specifically named placed.</p>
+
+
+	<p>Originally I was jumping though hoops trying to call static singletons, but ended up scratching my head how to get access to the Rails runtime. After finding hints from <a href="http://ola-bini.blogspot.com/2006/10/jruby-tutorial-4-writing-java.html">Ola Bini</a>, with some searching and source diving, I found the javadoc for <code>org.jruby.runtime.load.LoadService</code> has the key. (An aside, it would be nice if the JRuby folks published the JavaDocs, even if it changed with every release).</p>
+
+
+	<p>Except from <code>LoadService.java</code> JavaDoc:</p>
+
+
+	<blockquote>
+		<p>How to make a class that can get required by JRuby</p>
+	</blockquote>
+
+	<blockquote>
+		<p>First, decide on what name should be used to require the extension. In this purely hypothetical example, this name will be &#8216;active_record/connection_adapters/jdbc_adapter&#8217;. Then create the class name for this require-name, by looking at the guidelines above. Our class should be named active_record.connection_adapters.JdbcAdapterService, and implement one of the library-interfaces. The easiest one is BasicLibraryService, where you define the basicLoad-method, which will get called when your library should be loaded.</p>
+	</blockquote>
+
+	<blockquote>
+		<p>The next step is to either put your compiled class on JRuby&#8217;s classpath, or package the class/es inside a jar-file. To package into a jar-file, we first create the file, then rename it to jdbc_adapter.jar. Then we put this jar-file in the directory active_record/connection_adapters somewhere in JRuby&#8217;s load path.</p>
+	</blockquote>
+
+	<p>The short and skinny of this? The package defines the directory and the class name determines the jar name. The package period separators are converted to slashes, so the package <code>com.slackworks</code> would be the directory <code>com/slackworks</code>. For brevity, this example uses the simple package <code>slackworks</code>, for a directory of <code>slackworks</code>. The class name, sans <code>Service</code> and converted from CamelCase to under scores determines the jar name. So the <code>RailsSpringService</code> class translates to <code>rails_spring.jar</code></p>
+
+
+	<h2>Building a JRuby Service</h2>
+
+	<h3>Step 0: Have a working JRuby setup.</h3>
+
+	<p>Already done the JRuby installation dance with a rails instance with <a href="http://wiki.jruby.org/wiki/Running_Rails_with_ActiveRecord-JDBC">JDBC</a> for MySQL to monkey with. All of the following source can be pulled from git://sprocket.slackworks.com/srv/git/samples.git</p>
+
+
+<h3>Step 1: Implementing <code>BasicLibraryService</code>.</h3>
+For <code>org.jruby.runtime.load.BasicLibraryService</code>, this is fairly straight forward. All you need is to implement the <code>basicLoad</code> method. In addition, the <code>org.jruby.Ruby</code> has a <code>static ThreadLocal</code> reference for the Ruby runtime using methods <code>getCurrentInstance</code> and <code>setCurrentInstance</code>. This will be used as a place for the beans being created in the Spring Context to access the Ruby runtime. Just be careful of the ThreadLocal restrictions in multi-threaded environments. In this scenario of using the Ruby runtime to help build the Spring context, it is fine.
+<pre>
+    /**
+     * JRuby Service to load a Spring Context
+     */
+    public class RailsSpringService implements BasicLibraryService {
+        private static ApplicationContext applicationContext;
+
+        /**
+         * Executed by JRuby
+         */
+        public boolean basicLoad(final Ruby runtime) throws IOException {
+            // Set the Ruby runtime into the TheadLocal static reference
+            Ruby.setCurrentInstance( runtime );    
+
+            // Load the Spring context
+            applicationContext = new ClassPathXmlApplicationContext( new String[] { "applicationContext.xml" } );        
+
+            return true;
+        }
+
+        /**
+         * Get access to the Spring Context
+         */
+        public static ApplicationContext getApplicationContext() {        
+            return applicationContext;
+        }
+    }
+</pre>
+<p>Complete source at <a href="http://issues.slackworks.com/public/samples/browser/jruby_service/src/main/java/slackworks/RailsSpringService.java">RailsSpringService.java</a> which includes the package declaration that deteremines the directory</p>
+	<h3>Step 2: Setting up the Spring context.</h3>
+
+I am not going to get into the knitty gritty about Spring, only showing how Spring can load the rails&#8217; <code>config/database.yml</code> to setup a Datasource. The juicy part is the following:
+<pre>
+    // Get the RAILS_ENV from the JRuby runtime
+    Ruby jruby = Ruby.getCurrentInstance();        
+    RubyModule kernel = jruby.getKernel();
+    String rails_env = kernel.getConstant("RAILS_ENV").asJavaString();
+</pre>
+This is called by the <a href="http://issues.slackworks.com/public/samples/browser/jruby_service/src/main/java/slackworks/rails/YamlConfig.java">YamlConfig.java</a> constructor to correctly parse the database.yml and use the configuration for the running <code>RAILS_ENV</code>. 
+	<p>The <a href="http://issues.slackworks.com/public/samples/browser/jruby_service/src/main/java/slackworks/rails/DatabaseConfig.java">DatabaseConfig.java</a> is an extension of YamlConfig specific for handling the database.yml. Lastly, <a href="http://issues.slackworks.com/public/samples/browser/jruby_service/src/main/java/slackworks/rails/DataSource.java">DataSource.java</a> is an extension of Apache Commons <span class="caps">DBCP</span> <a href="http://commons.apache.org/dbcp/apidocs/org/apache/commons/dbcp/BasicDataSource.html">BasicDataSource.java</a> that is constructed using DatabaseConfig.</p>
+
+
+This allows for a applicationContext.xml of:
+<pre>
+    &lt;?xml version="1.0" encoding="UTF-8"?&gt;
+    &lt;beans&gt;
+        &lt;!--  Rails Database Config --&gt;
+        &lt;bean id="databaseConfig" class="slackworks.rails.DatabaseConfig"&gt;
+            &lt;constructor-arg value="config/database.yml" /&gt;        
+        &lt;/bean&gt;
+
+        &lt;!--  Datasource  --&gt;
+        &lt;bean id="dataSource" class="slackworks.rails.DataSource" destroy-method="close"&gt;
+            &lt;constructor-arg ref="databaseConfig" /&gt;        
+            &lt;property name="initialSize"  value="2" /&gt;
+            &lt;property name="maxActive"    value="15" /&gt;
+            &lt;property name="maxIdle"      value="2" /&gt;        
+            &lt;property name="testOnBorrow" value="true" /&gt;        
+        &lt;/bean&gt;
+    &lt;/beans&gt;
+</pre>
+<p>Where the <code>databaseConfig</code> bean loads from the <code>config/database.yml</code>, using the Rails&#8217; <code>RAILS_ENV</code>, which gets passed to the <code>dataSource</code> bean. Now we have a DataSource that is in synch with Rails.</p>
+	<h3>Step 3: Packaging Rails Spring Service.</h3>
+
+	<p>Using the powers of Maven, the <a href="http://issues.slackworks.com/public/samples/browser/jruby_service/pom.xml">pom.xml</a> has been tweaked so that &#8216;mvn package&#8217; will create lib/slackworks with the rails_spring.jar and all its dependencies. The lib/slackworks directory need to be copied to the <span class="caps">RAILS</span>_ROOT</p>
+
+
+	<h3>Step 4: Set the classpath.</h3>
+
+	<p>JRuby is on the road to having jars automatically be loaded into the <span class="caps">JVM</span>, but I do not know of a smart way to automatically load the rails_spring.jar dependencies. To alleviate at, the classpath needs to be manually set to include everything in <code>lib/slackworks</code>, i.e. for Java 6, <code>export CLASSPATH=/rails-app/lib/slackworks/*</code>.</p>
+
+
+	<h3>Step 5: Testing with console.</h3>
+
+Now that everything is in place, the classpath has been set, time to fire it up for a test run. Simply call from the <code>RAILS_ROOT</code>,
+<pre>
+     jruby script/console
+</pre>
+You will be greet with the normal
+<pre>
+    Loading development environment
+</pre>
+Now load the RailsSpringService, via
+<pre>
+    require 'slackworks/rails_spring'
+</pre>
+<p>and you will be spammed with logging output as Spring starts up and reads the database.yml</p>
+	<h3>Step 6: Load RailsSpringService in Rails.</h3>
+
+In the config/<code>environment.rb</code>, at the bottom at
+<pre>
+    require 'slackworks/rails_spring'
+</pre>
+<p>Now when Rails starts up, you will be greeted by the same output as Spring starts up, the worlds have collided. Accessing the Spring context from Rails:</p>
+<pre>
+    include_class 'slackworks.RailsSpringService'
+    dataSource = RailsSpringService.getApplicationContext().getBean( 'dataSource' )
+</pre>
+	<h3>Next Steps</h3>
+
+	<p>Instead  of ActiveRecord directly creating <span class="caps">JDBC</span> connections, create a ActiveRecord adapter that builds a DataSource to dole out connections. The DataSource can be crammed into <span class="caps">JNDI</span>, providing a easy access for the Spring Context. This removes the wasteful need of having to start a separate set of database connections for the Spring Context.</p>
+
+
+<h3>Caveat.</h3>
+	<p>The world of JRuby is still a moving target, which should be no suprise to anyone, considering the JRuby team has sprinkled the web and the source with tidbits stating such. Thusly meaning, your mileage may vary.</p>
+  </div>

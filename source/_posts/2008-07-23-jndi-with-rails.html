@@ -1,0 +1,264 @@
+---
+layout: post
+title: "JNDI with Rails"
+permalink: /posts/jndi-with-rails
+date: 2008-07-23
+author: "Michael Guymon"
+comments: false
+external-url:
+categories:
+---
+  <div class="summary">
+	  <p>I like to explain the relationship between Rails and Java is that Rails makes the things I hate doing easy and Java makes the things I like doing possible.</p>
+
+
+	<p>In this mind set, when using Rails on JRuby I want to do as little configuration in Java (XML sit-ups are bad) and leverage Rails as much as possible (a few yml stretches are good). The most common configuration cross over is the database connection. This is where <span class="caps">JNDI</span> helps out, now both sides can use the same connection pool.</p>
+  </div>
+  <!-- more -->
+  <div class="body">
+    <h1>Putting your ducks in a row</h1>
+
+	<p>For the following examples to work, you will need the follow depedencies:</p>
+
+
+<ul>
+	<li><a href="http://java.sun.com/products/jndi/downloads/index.html">Sun&#8217;s <span class="caps">JNDI</span> File System Service Provider</a>. Follow &#8220;Download <span class="caps">JNDI 1</span>.2.1 &#38; More&#8221; to download File System Service Provider. You will need the fscontext and the providerutil jars both in you classpath. I would like to take this moment and say that Sun needs to get their head out of the mud and join the Maven party, instead of forcing people to navigate their cumbersome site.</li>
+</ul>
+
+<ul>
+	<li><a href="http://maven.apache.org/">Maven</a> will make you hate less. Manually managing the cadre of jars that Java demands will just chalk you full of spite. While Maven does not alleviate the problem, it does put a purdy bow on it</li>
+</ul>
+
+<ul>
+	<li>A given, you must already have gone through the steps of setting up a <a href="http://jruby.codehaus.org/">JRuby</a> runtime. Steps might be to strong of a word, basically it is unpackage and go.</li>
+</ul>
+
+	<h1>Configuring Rails to create its own <span class="caps">JNDI</span> and Connection Pool</h1>
+
+	<p>Now it is time to get the show on the road. The following setups will show how to startup a <span class="caps">JNDI</span> instance, register a Connection Pool, and then use the same Connection Pool in Rails and in a Spring</p>
+
+
+	<h2>Setting up the database.yml</h2>
+
+	<p>The latest version of activerecord-jdbc already supports using <span class="caps">JNDI</span> for connections. By setting additional information in <code>database.yml</code>, <code>jndi_factory_initial</code> and <code>jndi_provider_url</code>, a connection pool can be built and registered into <span class="caps">JNDI</span>. The <code>jndi_factory_initial</code> relates to the <span class="caps">JNDI</span> property <code>java.naming.factory.initial</code>, which boils down to the <span class="caps">JNDI</span> service that is going to be created. The <code>jndi_provider_url</code> relates to the <span class="caps">JNDI</span> property <code>java.naming.provider.url</code>, which is the <span class="caps">URL</span> to connect to the <span class="caps">JNDI</span> service. The standard setting, <code>jndi</code>, is going to be used as the location to store and retrieve the Connection Pool.</p>
+
+
+	<p>Extended database.yml</p>
+
+<pre>
+    development:
+      adapter: jdbc
+      jndi: jdbc/shared
+      jndi_factory_initial: com.sun.jndi.fscontext.RefFSContextFactory
+      jndi_provider_url: file:tmp
+      driver: mysql
+      url: jdbc:mysql://localhost/deployer_devel
+      username: the_username
+      password: a_password
+    </pre>
+	<h2>Firing up the <span class="caps">JNDI</span> instance</h2>
+
+	<p>The following copied into the <code>environment.rb</code> will create a <span class="caps">JNDI</span> instance and register a MySQL Datasource to create a Connection Pool. I would like to point out that the mentioned fscontext and the providerutil jars need to be in your classpath for this to work.</p>
+
+<pre>
+    # include Sun JNDI classes
+    include_class "java.lang.System" 
+    include_class "javax.naming.Context" 
+    include_class "javax.naming.InitialContext" 
+    include_class "javax.naming.Reference" 
+    include_class "javax.naming.StringRefAddr" 
+    include_class "javax.sql.DataSource" 
+
+    # include Mysql datasource class
+    include_class "com.mysql.jdbc.jdbc2.optional.MysqlConnectionPoolDataSource" 
+
+    # Create JNDI dir where it stores binding information, if it does not exist
+    # WARNING: This is hardcoded to match JNDI definition in database.yml!
+    if !File.exist? "tmp/jdbc" 
+      Dir.mkdir( 'tmp/jdbc' )
+    end
+
+    # ActiveRecord config
+    active_record_config = ActiveRecord::Base.establish_connection.config
+
+    # Register JNDI properties from ActiveRecord config
+    System.setProperty(Context::INITIAL_CONTEXT_FACTORY, active_record_config[:jndi_context_factory]);
+    System.setProperty(Context::PROVIDER_URL, active_record_config[:jndi_provider_url]);
+
+    # JNDI context
+    intial_context = InitialContext.new();
+
+    # Create MySQL datasource
+    data_source = MysqlConnectionPoolDataSource.new();
+    data_source.setUser( active_record_config[:username] );
+    data_source.setPassword( active_record_config[:password] );
+    data_source.setUrl( active_record_config[:url] )
+    intial_context.rebind("jdbc/datasource", data_source);
+
+    # Construct DBCP SharedPoolDataSource reference
+    ref = Reference.new(
+        "org.apache.commons.dbcp.datasources.SharedPoolDataSource",
+        "org.apache.commons.dbcp.datasources.SharedPoolDataSourceFactory",
+        nil);
+
+    # Some exciting Connection Pool options
+    ref.add(StringRefAddr.new("dataSourceName", "jdbc/datasource"));
+    ref.add(StringRefAddr.new("initialSize", "2" ));
+    ref.add(StringRefAddr.new("maxActive"  , "30" ));
+    ref.add(StringRefAddr.new("maxIdle"    , "2" ));
+    ref.add(StringRefAddr.new("testOnBorrow", "true" ));
+    ref.add(StringRefAddr.new("validationQuery", "SELECT 1" ));
+    ref.add(StringRefAddr.new("connectionProperties", "autoReconnect=true;" ));
+    intial_context.rebind( active_record_config[:jndi], ref);
+    </pre>
+	<p>Why a Mysql datasource and a <span class="caps">DBCP</span> Connection Pool you ask? The Mysql datasource is bare bones, only interested in data connection properties such as login, url, etc. The <span class="caps">DBCP</span> datasouce is tricked out as a connection pool, monitoring the number of active and idle connections to expand the connection pool as needed (among other neat features).</p>
+
+
+	<h1>Hooking up Java to the Rails <span class="caps">JNDI</span></h1>
+
+	<p>Here is where the magic happens, the Java equivalent  of <code>ActiveRecord::Base.establish_connection.config</code>.</p>
+
+
+<pre>
+
+    IRubyObject arBase = runtime.getModule( "ActiveRecord" ).getConstant( "Base" );        
+    IRubyObject establishConnection = arBase.callMethod( runtime.getCurrentContext(), "establish_connection" );
+    RubyHash arConfig = establishConnection.callMethod( runtime.getCurrentContext(), "config" ).convertToHash();
+
+</pre>
+	<p>Oh my, that is a mouth full. JRuby provides the loosey goosey ways of Ruby by wrapping everything in IRubyObject interfaces and indirectly executing operations. This Java block allows access to the configuration of ActiveRecord, so all the jndi properties set in the <code>database.yml</code> can be plucked out. Here is a slimmed down version of <a href="http://issues.slackworks.com/public/samples/browser/rails_jndi/src/main/java/slackworks/RailsJndiService.java">RailsJndiService</a> for <span class="caps">JNDI</span>.</p>
+
+
+<pre>
+
+    package slackworks;
+
+    // Sun JSE
+    import java.io.IOException;
+    import java.sql.Connection;
+    import java.sql.SQLException;
+    import java.util.Properties;
+
+    import javax.naming.InitialContext;
+    import javax.naming.NamingException;
+    import javax.sql.DataSource;
+
+    // JRuby
+    import org.jruby.Ruby;
+    import org.jruby.RubyHash;
+    import org.jruby.RubySymbol;
+    import org.jruby.runtime.builtin.IRubyObject;
+    import org.jruby.runtime.load.BasicLibraryService;
+
+    public class RailsSpringService implements BasicLibraryService {
+        protected Ruby runtime;
+        private static Properties jndiProperties;
+        private static String     jndiDataSourceName;
+
+        public boolean basicLoad(final Ruby runtime) throws IOException {                    
+
+            // JNDI properties
+            Properties properties = new Properties();
+
+            // ActiveRecord::Base.establish_connection.config[:jndi]
+            IRubyObject arBase = runtime.getModule( "ActiveRecord" ).getConstant( "Base" );        
+            IRubyObject establishConnection = arBase.callMethod( runtime.getCurrentContext(), "establish_connection" );
+            RubyHash arConfig = establishConnection.callMethod( runtime.getCurrentContext(), "config" ).convertToHash();
+
+            String jndi = arConfig.get( RubySymbol.newSymbol( runtime, "jndi" ) ).toString();
+
+            // Get initial context factory from ActiveRecord 
+            String context_factory = arConfig.get( RubySymbol.newSymbol( runtime, "jndi_factory_initial" ) ).toString();
+            properties.setProperty( "java.naming.factory.initial", context_factory );
+
+            // Get provider url from ActiveRecord 
+            String provider_url = arConfig.get( RubySymbol.newSymbol( runtime, "jndi_provider_url" ) ).toString();
+            properties.setProperty( "java.naming.provider.url", provider_url );
+
+            return true;
+        }
+
+        public static Properties getJndiProperties() {
+            return jndiProperties;
+        }
+
+        public static void setJndiProperties(Properties jndiProperties) {
+            DeployerService.jndiProperties = jndiProperties;
+        }
+
+        public static String getJndiDataSourceName() {
+            return jndiDataSourceName;
+        }
+
+        public static void setJndiDataSourceName(String jndiDataSourceName) {
+            DeployerService.jndiDataSourceName = jndiDataSourceName;
+        }
+
+        public static boolean testOpenConnection() throws SQLException, NamingException {
+            InitialContext initialContext = new InitialContext( jndiProperties );
+            DataSource ds = (DataSource) initialContext.lookup( getJndiDataSourceName() );
+            Connection conn = ds.getConnection();
+
+            return !conn.isClosed();
+        }        
+    }
+
+</pre>
+	<p>Using the powers of Maven, the <code>pom.xml</code> has been tweaked so that the task ‘<code>mvn package</code>’ will create <code>lib/slackworks</code> with the <code>rails_jndi.jar</code> and all its dependencies. For the lazy, I suggest simply using rails_jndi in <em>git://sprocket.slackworks.com/srv/git/samples.git</em>. The <code>lib/slackworks</code> directory need to be copied to the <code>RAILS_ROOT</code> and should contain:</p>
+
+
+<ul>
+	<li>avalon-framework-4.1.3.jar</li>
+	<li>log4j-1.2.12.jar</li>
+	<li>servlet-api-2.3.jar</li>
+	<li>commons-dbcp-1.2.2.jar</li>
+	<li>commons-logging-1.1.jar</li>
+	<li>commons-pool-1.3.jar</li>
+	<li>logkit-1.0.1.jar</li>
+	<li> mysql-connector-java-5.1.6.jar</li>
+	<li>jruby-1.1RC3.jar</li>
+	<li>rails_jndi.jar</li>
+</ul>
+
+	<p>Why so many jars? I have no idea. I think a common-dbcp is married to commons-pool and she does not let him leave the house alone. I bet logkit is log4j runty little brother and someone must be friends with servlet-api and snuck him into the party.</p>
+
+
+	<p>The classpath needs to be manually set to include everything in <code>lib/slackworks</code>, i.e. for Java 6, <code>export CLASSPATH=/path/to/rails/lib/slackworks/*</code>.</p>
+
+
+	<h2>Testing with console</h2>
+
+Now that everything is in place- the environment.rb setup, the RailsJndiService has been built, everything cozied up in lib/slackworks, and the classpath has been set. Time to fire up the console for a test run. Simply call from the <code>RAILS_ROOT</code>:
+<pre>
+     jruby script/console
+</pre>
+You will be greeted with
+<pre>
+    Loading development environment    
+</pre>
+Now load the RailsJndiService, via
+<pre>
+    require 'slackworks/rails_jndi'
+</pre>
+and you will be see the RailsJndiService retrieve the Connection Pool from <span class="caps">JNDI</span>
+<pre>
+    Loading Rails JNDI Service
+    Using ActiveRecord datasource at JNDI url: jdbc/shared
+    Using ActiveRecord JNDI Intial Context Factory: com.sun.jndi.fscontext.RefFSContextFactory
+    Using ActiveRecord property JNDI Provider URL: file:tmp
+</pre>
+Just to be sure, run the test method on RailsJndiService, via:
+<pre>
+    include_class 'slackworks.RailsJndiService'
+    RailsJndiService.testOpenConnection()      
+</pre>
+and you will be treated to a <code>true</code> return, meaning a valid connection is open from the datasource. 
+Now to be super sure, run an a simple ActiveRecord test:
+<pre>
+    ActiveRecord::Base.connected?
+</pre>
+<p>and you will be treated to another <code>true</code> return. Hooray, both Java and Rails are both using the same Connection Pool!</p>
+	<h1>Where is the Beef?</h1>
+
+	<p>So the examples are not that exciting on their own, unless you are in the face paced business of testing database connections. What it does show is how to unifiy database access in JRuby in Rails. Using <span class="caps">JNDI</span> also opens up a whole spectrum of integration with <span class="caps">JEE</span> applications.</p>
+  </div>

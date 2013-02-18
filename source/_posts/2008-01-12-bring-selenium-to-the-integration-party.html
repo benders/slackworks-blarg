@@ -1,0 +1,41 @@
+---
+layout: post
+title: "Bring Selenium to the Integration Party"
+permalink: /posts/integrating-selenium
+date: 2008-01-12
+author: "Michael Guymon"
+comments: false
+external-url:
+categories:
+---
+  <div class="summary">
+	  <p>Running Selenium on a headless box. Not particularly complex, but amazingly useful for integration testing.</p>
+  </div>
+  <!-- more -->
+  <div class="body">
+    <p>Do you wish you could leverage the power of Selenium? Do you long for it&#8217;s &#8220;automated web application UI tests&#8221;, but are boned by some headless horseman of a server? I have felt your pain. Tons of UI tests, but unable run them on the integration server. Ah, but there is a light at the end of the tunnel (that isn&#8217;t convincing the hosting company to attach a monitor)!</p>
+
+
+	<p>Here is the gist of it:</p>
+
+
+<pre>
+   nohup Xvfb :4 -screen 0 1024x768x24 2&gt;&#38;1 &gt; xvfb.log &#38;
+   sleep 3 # give Xvfb a few seconds to sort itself out
+   DISPLAY=4 nohup java -jar selenium-server.jar 2&gt;&#38;1 &gt; selenium.log &#38;
+</pre>
+	<p>Basically, <a href="http://en.wikipedia.org/wiki/Xvfb">Xvfb</a> creates a virtual X session, without the need for those kludgey monitors and keyboards. The <a href="http://www.openqa.org/selenium-rc">Selenium Remote Control</a> server is started up with the newly created Xvfb display, that is the <code>DISPLAY=4</code> part. That is that, the Selenium server is now running on the default 4444 port using <em>Xvfb</em>.</p>
+
+
+	<p>Why do I care? Previously I use to be stuck running Selenium tests only on my development machine, now our automated build servers like <a href="http://cruisecontrolrb.thoughtworks.com/">CCrb</a> or <a href="https://hudson.dev.java.net/">Hudson</a> (we actually use both) can execute all the tests, including selenium.</p>
+
+
+For team Debian, <em>Xvfb</em> can be installed with <em>apt</em>:
+<pre>   apt-get install xvfb</pre> 
+The Redhat club can get <em>Xvfb</em> with <em>yum</em>:
+<pre>   yum install xorg-x11-server-Xvfb</pre>
+	<p>And the <em>Selenium Remote Control</em> <code>selenium-server.jar</code> from <a href="http://www.openqa.org/selenium-rc">OpenQA</a></p>
+
+
+	<p>Inspired by Jordan Sissel&#8217;s <a href="http://www.semicomplete.com/blog/geekery/xvfb-firefox.html">post</a></p>
+  </div>

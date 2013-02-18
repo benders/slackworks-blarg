@@ -1,0 +1,34 @@
+---
+layout: post
+title: "Sprint Error 911 and the &ldquo;Download Domain&rdquo;"
+permalink: /posts/psa-sprint-error-911
+date: 2008-01-30
+author: "Nic Benders"
+comments: false
+external-url:
+categories:
+---
+  <div class="summary">
+	  <p>Trying to load a new version of a <span class="caps">J2ME</span> app on a Sprint v9m, I got this helpful error.</p>
+
+
+<pre>
+The issue has been reported.
+Please try again later.
+911
+</pre>
+	<p>Great, now I&#8217;m reported.  But for what?</p>
+  </div>
+  <!-- more -->
+  <div class="body">
+    <p>After a lot of fruitless Google work (911 is a noisy search term), even checking the unofficial <a href="http://www.sprintusers.com/forum/showthread.php?t=51042">Every Sprint 3g Error Code</a> page, I settled in on trial and error.</p>
+
+
+	<p>It turns out that this is a kind of permissions problem, caused by the &#8220;Download Domain&#8221; of the new version not matching the old one.</p>
+
+
+	<p>When an application is downloaded the device stores the hostname part of the <span class="caps">URL</span>, any updates to the application must come from the same hostname. So if you downloaded it from www.foo.com the first time, you can&#8217;t update it from m.foo.com.</p>
+
+
+	<p>On the v9m (RAZR 2) you can find out what the current &#8220;Download Domain&#8221; is for a specific application by going to the &#8220;Applications&#8221; folder under &#8220;My Content&#8221; and bringing up the &#8220;Options&#8221; &rarr; &#8220;Properties&#8221; menu for it. The &#8220;Download Domain&#8221; will be listed at the bottom of the scrollable page.</p>
+  </div>

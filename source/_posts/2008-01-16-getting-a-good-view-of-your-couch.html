@@ -1,0 +1,65 @@
+---
+layout: post
+title: "Getting a Good View of Your Couch"
+permalink: /posts/getting-a-good-view-of-your-couch
+date: 2008-01-16
+author: "Jon Guymon"
+comments: false
+external-url:
+categories:
+---
+  <div class="summary">
+	  <p>So far I have been doing all my CouchDB queries using &#8220;temporary views&#8221; which are Javascript strings which are POSTed to the database and used to select the records you&#8217;re interested in.  A more efficient way to do it is to save the Javascript strings as documents, these can be called with less traffic and a simpler <span class="caps">API</span>.  &#8220;Permanent views&#8221; also create cached indexes, so they offer performance advantages over temporary views as well.</p>
+  </div>
+  <!-- more -->
+  <div class="body">
+    <p><a href="http://highimpactnoise.com/">Tim Kofol</a> took <a href="http://blarg.slackworks.com/posts/first-post">my ideas</a> and ran with them, creating an ingenious way to maintain <a href="http://www.couchdbwiki.com/index.php?title=Views">CouchDB views</a> right in the Ruby code.  Witness:</p>
+
+
+<pre class="sh_ruby">
+class Post &lt; Blarg::CouchBase 
+  couch_accessor :tags
+
+  couch_view :comments_view, %[
+    function(doc) {
+      if (doc.type  "Comment") {
+        map(doc.post_id, doc);
+      }
+    }
+  ]
+
+  couch_view :all_tags_view, %[
+    function(doc) {
+      if (doc.type  &#8216;Post&#8217;) {
+        map(null, doc.tags);
+      }
+    }
+  ]
+
+  def self.all_tags   
+    self.all_tags_view.flatten.uniq.sort
+  end
+
+  def comments
+    comments = self.class.comments_view(:key => self.document_id)
+    comments.sort{|a,b| a.created_at <=> b.created_at}
+  end
+end
+</pre>
+	<p>With the views relevant to this class defined in the class itself, we need to load them into CouchDB.  I added Rake task which finds all views defined in the project and loads them into CouchDB, creating them or replacing older versions.</p>
+
+
+<pre>
+rake db:views:load
+</pre>
+	<p>It&#8217;s conceptually a little bit like doing <code>rake db:migrate</code> with ActiveRecord.</p>
+
+
+	<p>Unfortunately CouchDB so far only provides the &#8220;map&#8221; part of MapReduce, so I still need <code>Post.all_tags</code> and <code>Post#comments</code> to take care of the &#8220;reduce&#8221; part.  When full MapReduce functionality is ready in CouchDB, it will be great to define all the logic in the views and be able to dispense with the silly little helper methods.</p>
+
+
+	<p>One thing that bugs me is that views themselves are just Javascript strings.  CouchObject itself has a plugin for CouchDB allowing it to use Ruby as a query language, but I didn&#8217;t have any luck getting it to work.  It would be pretty fantastic to be able to define views like regular Ruby methods (with some syntactic sugar) and load them up with this interface.</p>
+
+
+	<p>Even better would be a generic query interface, maybe something like <a href="http://thoughtbot.com/projects/squirrel">Squirrel</a> that could be parsed into a CouchDB view.  An exciting possibility of this approach is that you could parse the same query code to talk to other Document Oriented Databases, such as <a href="http://code.google.com/p/thrudb/">ThruDB</a> <a href="http://www.amazon.com/b?ie=UTF8&node=342335011">SimpleDB</a> or <a href="http://rddb.rubyforge.org/">RDDB</a> .</p>
+  </div>
