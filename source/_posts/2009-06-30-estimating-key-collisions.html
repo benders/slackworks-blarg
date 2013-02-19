@@ -1,0 +1,22 @@
+---
+layout: post
+title: "Estimating Key Collisions (Birthday Problem)"
+permalink: /posts/estimating-key-collisions
+date: 2009-06-30
+author: "Nic Benders"
+comments: false
+external-url:
+categories:
+---
+  <div class="summary">
+	  <p>Thanks to a somewhat well known statistical behavior known as the <a href="/web/20090901152500/http://en.wikipedia.org/wiki/Birthday_paradox">Birthday Problem</a>, collisions of randomly generated keys are much more likely than you would expect.  You can estimate how likely with some quick Ruby.</p>
+  </div>
+  <!-- more -->
+  <div class="body">
+    <p>I ran into real world application of the Birthday Problem while I was building the <a href="/web/20090901152500/http://www.mblox.com/">mBlox</a> adapter for Vocel&#8217;s <span class="caps">SMS</span> product.  Most APIs for sending <span class="caps">SMS</span> give you back a randomly generated tracking ID when you submit a message.  This tracking ID can then be used to report the delivery status of the message.</p>
+<p>The mBlox <span class="caps">API</span> doesn&#8217;t automatically return a tracking ID, but it allows you to set one of your own.  Could we get away with just randomly generating our own without checking to see if we had used the ID yet?</p>
+<p>After some <a href="/web/20090901152500/http://mathworld.wolfram.com/BirthdayProblem.html">research</a> <a href="/web/20090901152500/http://74.125.155.132/search?q=cache:dRc-THFFPqsJ:alt.pluralsight.com/wiki/default.aspx/Craig/BirthdayProblemCalculator.html+http://pluralsight.com/wiki/default.aspx/Craig/BirthdayProblemCalculator.html&cd=1&hl=en&ct=clnk&gl=us&client=safari">online</a>, I built this little method to determine the chance of having at least one collision in a set of randomly distributed keys &#8216;k&#8217; out of a range of &#8216;n&#8217; possible values.  While calculating the exact probability for large numbers isn&#8217;t easy, it turns out estimating it is.</p>
+<script src="/web/20090901152500js_/http://gist.github.com/114240.js"></script><p>The real problem with the mBlox <span class="caps">API</span> is that the maximum value for their &#8220;BatchID&#8221; parameter is 99,999,999.  That would make a big salary, but it&#8217;s not a big keyspace.  For the expected trial run of 70,000 messages, the chance of at least one collision is over 99.999%.</p>
+<p><a href="/web/20090901152500/http://www.clickatell.com/">Clickatell</a> (another <span class="caps">SMS</span> aggregator), let&#8217;s you specify a 32-character string as the tracking ID.  Using that for 16-bytes of hex, that is a big enough space that the collision rate is effectively 0 even with over 100 Billion messages.</p>
+<p>So the random ID plan didn&#8217;t work for mBlox, although we could use it for Clickatell.  In the end we used a MySQL DB table with an autoincrement key as the tracking ID for mBlox messages.  This avoids dupe-checking and is synchronized on all the machines in the cluster.</p>
+  </div>

@@ -1,0 +1,47 @@
+---
+layout: post
+title: "The Blarg is Back"
+permalink: /posts/the-blarg-is-back
+date: 2009-06-29
+author: "Nic Benders"
+comments: false
+external-url:
+categories:
+---
+  <div class="summary">
+	  <p>Now that Merb is going to be Rails, we figured that we would overhaul the old blarg and bring it back to the Rails world.  But to keep things interesting, we decided to go all Ruby 1.9.</p>
+<p>We also moved the code over to GitHub while we were at it.  So if you want to see what we&#8217;ve been up to, head over to <a href="/web/20090901152552/http://github.com/gnarg/blarg">http://github.com/gnarg/blarg</a> and have a look.</p>
+<p>(Note that the <span class="caps">RSS</span> feed is still broken, but that will hopefully be working again shortly.)</p>
+  </div>
+  <!-- more -->
+  <div class="body">
+    <h1>The Details</h1>
+<p>The backend is still CouchDB, so we didn&#8217;t have to sweat out the mysteries of Ruby 1.9 versus the MySQL adapter.  In fact we pulled out ActiveRecord entirely, who says Rails is monolithic?</p>
+<p>We are using Thin for the web server, which seems to be working great under 1.9.  Mongrel had compilation issues, and we didn&#8217;t want to try moving our entire Passenger setup to 1.9.</p>
+<p>We use the <code>RedCloth</code>, <code>hpricot</code>, <code>json</code>, and <code>dm-validations</code> gems and none of those gave us any trouble under 1.9.</p>
+<p>Michael has been working hard on beefing up our CouchDB interface with DataMapper.  With luck we should get a post from him shortly on that topic.</p>
+<h1>The Stack Today</h1>
+<ul>
+	<li>Apache 2.2 with mod_proxy_balance</li>
+	<li>Thin 1.2.2</li>
+	<li>Rails 2.3.2</li>
+	<li>Ruby 1.9.1-p129 (on x86_64 Linux)</li>
+</ul>
+<p>and</p>
+<ul>
+	<li>CouchDB 0.9.0</li>
+	<li>Erlang (<span class="caps">BEAM</span>) 5.6.3 (also 64-bit)</li>
+</ul>
+<h1>Notes from Installing and using Ruby 1.9</h1>
+<p>We installed 1.9 from source and put it in <code>/opt/ruby-1.9</code> to avoid trying to upgrade the vendor ruby packages.  We also used the <code>--program-suffix=19</code> option so that all our binaries have names like &#8216;<code>ruby19</code>&#8217; and &#8216;<code>gem19</code>&#8217;, this makes it a lot easier to tell which ruby you are running something under.  It did mean adding <code>/opt/ruby-1.9/bin/</code> to the <code>PATH</code>.</p>
+<p>Most Rails commands work the way you would expect:</p>
+<ul>
+	<li><code>rake19 gems</code> to show Ruby 1.9&#8217;s view of the gems that your app needs</li>
+	<li><code>ruby19 ./script/server</code> to fire up a development server.</li>
+</ul>
+<p>However <code>script/console</code> calls <code>irb</code> underneath, so it needs a special argument.  Otherwise <code>script/console</code> will still be running under Ruby 1.8, which will be highly confusing.</p>
+<ul>
+	<li><code>ruby19 ./script/console --irb=irb19</code></li>
+</ul>
+<p>Because we installed Thin with <code>gem19</code>, it is automatically setup to use the Ruby 1.9 interpreter.  To check, look at the first line of your thin script ( <code>/opt/ruby-1.9/bin/thin</code> in our case ).  The first line should be <code>#!/opt/ruby-1.9/bin/ruby19</code> and not <code>#!/usr/bin/ruby</code> or <code>#!/bin/env ruby</code>.</p>
+  </div>

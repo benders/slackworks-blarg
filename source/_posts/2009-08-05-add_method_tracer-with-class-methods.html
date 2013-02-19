@@ -1,0 +1,48 @@
+---
+layout: post
+title: "Using New Relic add_method_tracer with Class Methods"
+permalink: /posts/add_method_tracer-with-class-methods
+date: 2009-08-05
+author: "Nic Benders"
+comments: false
+external-url:
+categories:
+---
+  <div class="summary">
+	  <p>At <a href="/web/20090901153120/http://www.vocel.com/">Vocel</a> we use the <a href="/web/20090901153120/http://newrelic.com/">New Relic</a> plugin to monitor the performance of our production Rails apps.</p>
+<p>In addition to the built-in ActiveRecord and Controller metrics, you can define your own <a href="/web/20090901153120/http://support.newrelic.com/faqs/docs/custom-metric-collection">custom metrics</a>.  The documentation clearly shows how to add a metric to an instance method, but how do you add one to a class method?</p>
+  </div>
+  <!-- more -->
+  <div class="body">
+    <p>I&#8217;m using custom metrics to differentiate between time spent in our app and time spent waiting for external components.  So we can imagine that we have a class like:</p>
+<noscript><pre><br />
+# This doesn&#8217;t work<br />
+class Product &lt; ActiveRecord::Base<br />
+  # Define a public Class method on Product<br />
+  def self.get_recommended_for_subscriber(subscriber)<br />
+    # &#8230; call some web service, then use find to return a product instance &#8230;<br />
+  end<br />
+<br />
+  add_method_tracer :get_recommended_for_subscriber, &#8216;Custom/Product.get_recommended_for_subscriber&#8217;<br />
+<br />
+  # Instance methods of Product go here<br />
+end<br />
+</pre></noscript>
+<script src="/web/20090901153120js_/http://gist.github.com/144278.js"></script><p>The problem with this is that the New Relic add_method_tracer call expects an instance method.  So when we add the custom metric inside the class definition it is unable to find the method that it is supposed to be tracing.  It&#8217;s looking for <tt>get_recommended_for_subscriber</tt> not <nobr><tt>Product.get_recommended_for_subscriber</tt></nobr>.</p>
+<p>The key to the solution is that in Ruby, Class methods are <a href="/web/20090901153120/http://blog.jayfields.com/2007/04/ruby-class-methods.html">just instance methods on the singleton object</a> that defines the class.  So instead of dealing with the class methods on the class, we want to operate on the instance methods of the singleton.  Luckily we can get access to the singleton definition by using the &#8220;class &lt;&lt; self&#8221; syntax.</p>
+<noscript><pre><br />
+class Product &lt; ActiveRecord::Base<br />
+  class &lt;&lt; self<br />
+    # Define a public instance method on the singleton Class named Product<br />
+    def get_recommended_for_subscriber(subscriber)<br />
+      # &#8230; call some web service, then use find to return a product instance &#8230;<br />
+    end<br />
+<br />
+    add_method_tracer :get_recommended_for_subscriber, &#8216;Custom/Product.get_recommended_for_subscriber&#8217;<br />
+  end<br />
+<br />
+  # Instance methods of Product go here<br />
+end<br />
+</pre></noscript>
+<script src="/web/20090901153120js_/http://gist.github.com/144279.js"></script><p>You&#8217;ll see the &#8220;<nobr><tt>class &lt;&lt; self</tt></nobr>&#8221; idiom used a lot inside the Rails code itself.  I generally favor the &#8220;<nobr><tt>def self.method_name</tt></nobr>&#8221; syntax, because it makes it clear that this is a class method.  But in this case the real power of the class singleton came in very handy.</p>
+  </div>
