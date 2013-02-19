@@ -9,8 +9,8 @@ external-url:
 categories:
 ---
   <div class="summary">
-	  <p>At <a href="/web/20090901153120/http://www.vocel.com/">Vocel</a> we use the <a href="/web/20090901153120/http://newrelic.com/">New Relic</a> plugin to monitor the performance of our production Rails apps.</p>
-<p>In addition to the built-in ActiveRecord and Controller metrics, you can define your own <a href="/web/20090901153120/http://support.newrelic.com/faqs/docs/custom-metric-collection">custom metrics</a>.  The documentation clearly shows how to add a metric to an instance method, but how do you add one to a class method?</p>
+	  <p>At <a href="http://www.vocel.com/">Vocel</a> we use the <a href="http://newrelic.com/">New Relic</a> plugin to monitor the performance of our production Rails apps.</p>
+<p>In addition to the built-in ActiveRecord and Controller metrics, you can define your own <a href="http://support.newrelic.com/faqs/docs/custom-metric-collection">custom metrics</a>.  The documentation clearly shows how to add a metric to an instance method, but how do you add one to a class method?</p>
   </div>
   <!-- more -->
   <div class="body">
@@ -29,7 +29,7 @@ class Product &lt; ActiveRecord::Base<br />
 end<br />
 </pre></noscript>
 <script src="/web/20090901153120js_/http://gist.github.com/144278.js"></script><p>The problem with this is that the New Relic add_method_tracer call expects an instance method.  So when we add the custom metric inside the class definition it is unable to find the method that it is supposed to be tracing.  It&#8217;s looking for <tt>get_recommended_for_subscriber</tt> not <nobr><tt>Product.get_recommended_for_subscriber</tt></nobr>.</p>
-<p>The key to the solution is that in Ruby, Class methods are <a href="/web/20090901153120/http://blog.jayfields.com/2007/04/ruby-class-methods.html">just instance methods on the singleton object</a> that defines the class.  So instead of dealing with the class methods on the class, we want to operate on the instance methods of the singleton.  Luckily we can get access to the singleton definition by using the &#8220;class &lt;&lt; self&#8221; syntax.</p>
+<p>The key to the solution is that in Ruby, Class methods are <a href="http://blog.jayfields.com/2007/04/ruby-class-methods.html">just instance methods on the singleton object</a> that defines the class.  So instead of dealing with the class methods on the class, we want to operate on the instance methods of the singleton.  Luckily we can get access to the singleton definition by using the &#8220;class &lt;&lt; self&#8221; syntax.</p>
 <noscript><pre><br />
 class Product &lt; ActiveRecord::Base<br />
   class &lt;&lt; self<br />
